@@ -20,6 +20,7 @@ class InitCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output)
     {
+        $changeFlag = False;
         $output->writeln('<info>Defining crontab task...</info>');
         $output->writeln('<info>Please enter the frequency of data aggregating</info> <comment>(frequency must be equal "pinba_stats_history" of the pinba engine config)</comment>.');
 
@@ -46,24 +47,42 @@ class InitCommand extends Command
         $crontabString = $process->isSuccessful() ? $process->getOutput() : '';
 
         $path = realpath(__DIR__ . '/../../../console');
-        $command = '*/' . $frequency . ' * * * * ' . $path . ' aggregate';
 
+        $crontabString .= "\n# Pinboard aggregating & clean\n";
+
+        // Add the aggregate command in to crontab if not exist
+        $execTime = '*/' . $frequency . ' * * * * ';
+        $command = $path . ' aggregate';
         if (strpos($crontabString, $command) === false) {
-            $crontabString .= "\n" . $command . "\n";
+            $crontabString .= $execTime . $command . "\n";
+            $changeFlag = True;
         }
 
-        $file = tempnam(sys_get_temp_dir(), 'ipm');
-        file_put_contents($file, $crontabString);
-
-        $process = new Process('crontab ' . $file);
-        $process->setTimeout(20);
-        $process->run();
-
-        if (!$process->isSuccessful()) {
-            throw new \RuntimeException($process->getErrorOutput());
+        // Add the clean command in to crontab if not exist
+        $execTime = '3 0 * * * ';
+        $command = $path . ' clean';
+        if (strpos($crontabString, $command) === false) {
+            $crontabString .= $execTime . $command . "\n";
+            $changeFlag = True;
         }
 
-        $output->writeln('<info>Crontab task are defined successfully</info>');
-        $output->writeln('<info>Please set parameter "aggregation_period" to value "PT' . $frequency . 'M" in config/parameters.yml</info>');
+        if ($changeFlag) {
+            $file = tempnam(sys_get_temp_dir(), 'ipm');
+            file_put_contents($file, $crontabString);
+
+            $process = new Process('crontab ' . $file);
+            $process->setTimeout(20);
+            $process->run();
+
+            if (!$process->isSuccessful()) {
+                throw new \RuntimeException($process->getErrorOutput());
+            }
+
+            $output->writeln('<info>Crontab task are defined successfully</info>');
+            $output->writeln('<info>Please set parameter "aggregation_period" to value "PT' . $frequency . 'M" in config/parameters.yml</info>');
+        }
+        else {
+            $output->writeln('<comment>The crons already exist</comment>');
+        }
     }
 }

@@ -28,6 +28,12 @@ class AggregateCommand extends Command
         ;
     }
 
+    protected function currentTime()
+    {
+        $now = new \DateTime();
+        return $now->format('Y-m-d H:i:s');
+    }
+
     protected function initMailer()
     {
         if (isset($this->params['smtp'])) {
@@ -137,6 +143,8 @@ class AggregateCommand extends Command
 
         $db = $this->app['db'];
 
+        $output->writeln('<comment>[' . $this->currentTime() . ']</comment> <info>Starting aggregation</info>');
+
         try {
             $this->initMailer();
         }
@@ -182,47 +190,18 @@ class AggregateCommand extends Command
         $now = new \DateTime();
         $now = $now->format('Y-m-d H:i:s');
 
-        $delta = new \DateInterval(isset($this->params['records_lifetime']) ? $this->params['records_lifetime'] : 'P1M');
-        $date = new \DateTime();
-        $date->sub($delta);
-
-        $params = array(
-            'created_at' => $date->format('Y-m-d H:i:s'),
-        );
-
-        $tablesForClear = array(
-            "ipm_report_2_by_hostname_and_server",
-            "ipm_report_by_hostname",
-            "ipm_report_by_hostname_and_server",
-            "ipm_report_by_server_name",
-            "ipm_req_time_details",
-            "ipm_mem_peak_usage_details",
-            "ipm_status_details",
-            "ipm_cpu_usage_details",
-            "ipm_timer",
-            "ipm_tag_info",
-        );
-
         $sql = '';
+        $sql .= 'TRUNCATE TABLE `ipm_request`;';
+        $sql .= 'INSERT INTO `ipm_request` SELECT * FROM `request`;';
 
-        foreach ($tablesForClear as $value) {
-            $sql .= '
-            DELETE
-            FROM
-                ' . $value . '
-            WHERE
-                created_at < :created_at
-            ;';
-        }
-        if ($sql != '')
-            $db->executeQuery($sql, $params);
+        $db->executeQuery($sql);
 
         if (isset($this->params['notification']['enable']) && $this->params['notification']['enable']) {
             $sql = '
                 SELECT
                     server_name, script_name, status, max(hostname) AS hostname, count(*) AS count
                 FROM
-                    request
+                    ipm_request
                 WHERE
                     status >= 500
                 GROUP BY
@@ -248,7 +227,7 @@ class AggregateCommand extends Command
             SELECT
                 server_name, hostname, COUNT(*) AS cnt
             FROM
-                request
+                ipm_request
             GROUP BY
                 server_name, hostname
         ';
@@ -260,7 +239,7 @@ class AggregateCommand extends Command
                 SELECT
                     r.%s
                 FROM
-                    request r
+                    ipm_request r
                 WHERE
                     r.server_name = r2.server_name AND r.hostname = r2.hostname
                 ORDER BY
@@ -298,7 +277,7 @@ class AggregateCommand extends Command
                     ' . sprintf($subselectTemplate, 'doc_size', 'doc_size', $server['cnt'] * (1 - 1.00), 'doc_size_100') . ',
                     \'' . $now . '\'
                 FROM
-                    request r2
+                    ipm_request r2
                 WHERE
                     r2.server_name = "' . $server['server_name'] . '" and r2.hostname = "' . $server['hostname'] . '"
                 LIMIT 1
@@ -452,7 +431,7 @@ class AggregateCommand extends Command
             SELECT
                 server_name, hostname, script_name, status, tags, tags_cnt, FROM_UNIXTIME(max(timestamp))
             FROM
-                request
+                ipm_request
             WHERE
                 status >= 500
             GROUP BY
@@ -479,7 +458,7 @@ class AggregateCommand extends Command
                 SELECT
                     id, server_name, hostname, script_name, max(req_time), max(mem_peak_usage), max(tags), max(tags_cnt), max(timers_cnt), FROM_UNIXTIME(timestamp)
                 FROM
-                    request
+                    ipm_request
                 WHERE
                     server_name = "' . $server['server_name'] . '" AND hostname = "' . $server['hostname'] . '" AND req_time > ' . (float)$maxReqTime . '
                 GROUP BY
@@ -519,7 +498,7 @@ class AggregateCommand extends Command
                     FROM
                         timer t
                     JOIN
-                        request r ON t.request_id = r.id
+                        ipm_request r ON t.request_id = r.id
                     JOIN
                         timertag tt ON tt.timer_id = t.id
                     JOIN
@@ -548,7 +527,7 @@ class AggregateCommand extends Command
                 SELECT
                     server_name, hostname, script_name, max(mem_peak_usage), max(tags), max(tags_cnt), FROM_UNIXTIME(max(timestamp))
                 FROM
-                    request
+                    ipm_request
                 WHERE
                     server_name = "' . $server['server_name'] . '" AND hostname = "' . $server['hostname'] . '" AND mem_peak_usage > ' . (int)$maxMemoryUsage . '
                 GROUP BY
@@ -578,7 +557,7 @@ class AggregateCommand extends Command
                   SELECT
                       server_name, hostname, script_name, max(ru_utime), max(tags), max(tags_cnt), FROM_UNIXTIME(max(timestamp))
                   FROM
-                      request
+                      ipm_request
                   WHERE
                       server_name = "' . $server['server_name'] . '" AND hostname = "' . $server['hostname'] . '" AND ru_utime > ' . (int)$maxCPUUsage . '
                   GROUP BY
@@ -596,7 +575,7 @@ class AggregateCommand extends Command
         $values = $this->getBorderOutValues($db, $servers);
         $this->sendBorderOutEmails($values);
 
-        $output->writeln('<info>Data are aggregated successfully</info>');
+        $output->writeln('<comment>[' . $this->currentTime() . ']</comment> <info>Data are aggregated successfully</info>');
 
         if (!unlink( __FILE__ . '.lock')) {
             $output->writeln('<error>Error: cannot remove ' . __FILE__ . '.lock file, you must remove it manually and check server settings.</error>');
