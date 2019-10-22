@@ -8,7 +8,7 @@
       <div class="span{{ period == '1 month' or period == '1 week' ? '12' : '6' }}">
         <h2>Request time <small><a href="{{ path('server_req_time', { serverName: server_name, hostName: hostname }) }}">view details</a></small></h2>
         {% if req|length > 0 %}
-        <div id="req-time-chart" style="height: 450px;"></div>
+        <div id="req-time-chart" style="height: 455px;"></div>
         <script type="text/javascript">
             var rtChart;
 
@@ -122,7 +122,7 @@
       <div class="span{{ period == '1 month' or period == '1 week' ? '12' : '6' }}">
         <h2>Requests per sec {# <small><a href="{{ path('server_request_time', { serverName: server_name }) }}">view details</a></small> #}</h2>
         {% if req_per_sec.data|length > 0 %}
-        <div id="req-per-sec-chart" style="height: {{ 346 + req_per_sec.hosts|length * 19 + (req_per_sec.hosts|length > 1 ? 19 : 0) }}px;"></div>
+        <div id="req-per-sec-chart" style="height: {{ 315 + req_per_sec.hosts|length * 28 + (req_per_sec.hosts|length > 0 ? 0 : 28) }}px;"></div>
         <script type="text/javascript">
             var rpsChart;
 
